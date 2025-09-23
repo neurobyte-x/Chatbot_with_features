@@ -1,5 +1,34 @@
+# Core app
 streamlit
-langgraph
+
+# LangChain ecosystem
 langchain
+langchain-core
+langchain-text-splitters
+langsmith
+
+# LangGraph
+langgraph
+langgraph-prebuilt
+langgraph-sdk
+langgraph-checkpoint
+
+# Google + OpenAI integrations
+langchain-google-genai
 openai
+
+# Environment + utilities
 python-dotenv
+pydantic
+tqdm
+requests
+httpx
+
+# Data handling
+pandas
+numpy
+pyyaml
+
+# Optional but useful
+sqlalchemy
+orjson
