@@ -2,6 +2,8 @@ import streamlit as st
 from langgraph_backend import chatbot
 from langchain_core.messages import HumanMessage
 
+config1={'configurable': {'thread_id': 'thread-1'}}
+
 if 'msg_history' not in st.session_state:
     st.session_state['msg_history']=[]
 
@@ -22,9 +24,16 @@ if user_input:
     
     response = chatbot.invoke(
         {'messages':[HumanMessage(content=user_input)]},
-        config={'configurable': {'thread_id': 'default_thread'}}
+        config=config1
     )
-    ai_message=response['messages'][-1].content
-    st.session_state['msg_history'].append({'role':'assistant','content':ai_message})
+    # ai_message=response['messages'][-1].content
+    # st.session_state['msg_history'].append({'role':'assistant','content':ai_message})
     with st.chat_message('assistant'):
-        st.text(ai_message)
+        ai_msg=st.write_stream(
+            msg_chunk.content for msg_chunk,metadata in chatbot.stream(
+                {'messages':[HumanMessage(content=user_input)]},
+                config=config1,
+                stream_mode='messages'
+            )
+        )
+    st.session_state['msg_history'].append({'role':'assistant','content':ai_msg})
