@@ -2,6 +2,10 @@ import streamlit as st
 from langgraph_backend import chatbot
 from langchain_core.messages import HumanMessage,AIMessage
 import uuid
+from datetime import datetime
+
+def generate_chat_name():
+    return f"Chat {datetime.now().strftime('%d-%m %H:%M')}"
 
 st.title("LangGraph Chatbot")
 
@@ -13,6 +17,10 @@ def reset_chat():
     thread_id=generate_thread()
     st.session_state['thread_id']=thread_id
     st.session_state['msg_history']=[]
+    chat_name = generate_chat_name()
+    st.session_state['chat_names'][thread_id] = chat_name
+
+    add_thread(thread_id)
     
 def add_thread(thread_id):
     if thread_id not in st.session_state['chat_threads']:
@@ -26,6 +34,9 @@ def load_conversation(thread_id):
 
 if 'msg_history' not in st.session_state:
     st.session_state['msg_history']=[]
+    
+if 'chat_names' not in st.session_state:
+    st.session_state['chat_names'] = {}
     
 if 'thread_id' not in st.session_state:
     st.session_state['thread_id']=generate_thread()
@@ -46,19 +57,19 @@ if st.sidebar.button('New Chat'):
 st.sidebar.header("My Conversations")
 
 for thread_id in st.session_state['chat_threads'][::-1]:
-    if st.sidebar.button(str(thread_id)):
-        st.session_state['thread_id']=thread_id
-        messages=load_conversation(thread_id)
-        
-        temp_msg=[]
-        
+    display_name = st.session_state['chat_names'].get(thread_id, str(thread_id))
+    if st.sidebar.button(display_name):
+        st.session_state['thread_id'] = thread_id
+        messages = load_conversation(thread_id)
+
+        temp_msg = []
         for msg in messages:
-            if isinstance(msg,HumanMessage):
-                role='user'
+            if isinstance(msg, HumanMessage):
+                role = 'user'
             else:
-                role='assistant'
-            temp_msg.append({'role':role,'content':msg.content})
-        st.session_state['msg_history']=temp_msg
+                role = 'assistant'
+            temp_msg.append({'role': role, 'content': msg.content})
+        st.session_state['msg_history'] = temp_msg
 
 for msg in st.session_state['msg_history']:
     with st.chat_message(msg['role']):
