@@ -17,6 +17,7 @@ langgraph-checkpoint
 
 # Google + OpenAI integrations
 langchain-google-genai
+google-generativeai
 openai
 
 # Environment + utilities
