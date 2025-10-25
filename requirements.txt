@@ -4,6 +4,8 @@ streamlit
 # LangChain ecosystem
 langchain
 langchain-core
+langchain-community
+langchain-experimental
 langchain-text-splitters
 langsmith
 
@@ -29,6 +31,19 @@ pandas
 numpy
 pyyaml
 
+# Web scraping
+beautifulsoup4
+lxml
+
+# System monitoring
+psutil
+
 # Optional but useful
 sqlalchemy
 orjson
+
+# FastAPI (optional - for REST API backend)
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+aiofiles>=23.2.1

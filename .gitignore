@@ -12,3 +12,6 @@ venv/
 
 # Other temporary files
 *.log
+
+# Uploaded images
+uploaded_images/
