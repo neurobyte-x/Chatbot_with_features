@@ -13,7 +13,10 @@ import math
 import requests
 import os
 from langchain_community.tools import DuckDuckGoSearchRun
-from langchain_experimental.utilities import PythonREPL
+try:
+    from langchain_experimental.utilities import PythonREPL
+except ImportError:
+    from langchain_community.utilities import PythonREPL
 from langchain_community.utilities import OpenWeatherMapAPIWrapper
 import google.generativeai as genai
 from PIL import Image
@@ -54,8 +57,18 @@ def web_search(query: str) -> str:
 def python_code_executor(code: str) -> str:
     """Execute Python code and return the result."""
     try:
-        executor = PythonREPL()
-        result = executor.run(code)
+        try:
+            executor = PythonREPL()
+            result = executor.run(code)
+        except Exception:
+            import io
+            import contextlib
+            
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                exec(code)
+            result = output.getvalue()
+        
         return f'Code execution result:\n{result}'
     except Exception as e:
         return f'Error executing code: {str(e)}'
