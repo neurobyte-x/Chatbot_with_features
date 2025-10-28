@@ -88,14 +88,9 @@ with st.sidebar.expander("View All Tools"):
     - 🌤️ Weather Info
     - 🖼️ Image Analysis
     
-    **File System:**
-    - 📄 Create/Read Files
-    - 📁 List Directory
-    - 🔄 Move/Delete Files
     
     **Web & Data:**
-    - 🌐 Web Scraping
-    - 🔗 Extract Links
+    - 🌐 Search StackOverflow
     - 💾 SQL Queries
     
     **Utilities:**

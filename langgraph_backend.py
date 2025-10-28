@@ -20,11 +20,17 @@ except ImportError:
 from langchain_community.utilities import OpenWeatherMapAPIWrapper
 import google.generativeai as genai
 from PIL import Image
-from pathlib import Path
-import shutil
-from bs4 import BeautifulSoup
 import sqlite3
 import json
+from langchain_community.utilities import StackExchangeAPIWrapper
+from langchain_community.utilities import GoogleSerperAPIWrapper
+from langchain_community.agent_toolkits import PlayWrightBrowserToolkit
+from langchain_community.tools.playwright.utils import (
+    create_async_playwright_browser,  
+)
+
+
+
 
 load_dotenv()
 
@@ -44,13 +50,18 @@ class chat_state(TypedDict):
 
 @tool
 def web_search(query: str) -> str:
-    """Use this tool to search the web for relevant information."""
+    """Search the web using Google Serper API and return summarized results."""
     try:
-        search = DuckDuckGoSearchRun()
-        res = search.run(query)
-        return f'Web search results for "{query}":\n{res}'
+        api_key = os.getenv("SERPER_API_KEY")
+        if not api_key:
+            return "Error: SERPER_API_KEY not found in environment variables."
+
+        search = GoogleSerperAPIWrapper(serper_api_key=api_key)
+        results = search.run(query)
+
+        return f"🔍 Web search results for '{query}':\n\n{results.strip()}"
     except Exception as e:
-        return f'Error occurred: {str(e)}'
+        return f"❌ Error in web_search tool: {str(e)}"
 
 
 @tool
@@ -137,102 +148,39 @@ def image_reasoning_tool(image_path: str) -> str:
 
 
 
-@tool
-def create_file(file_path: str, content: str) -> str:
-    """Create a new file with the given content."""
-    try:
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(content)
-        return f"✅ File created: {file_path}"
-    except Exception as e:
-        return f"Error creating file: {str(e)}"
-
 
 @tool
-def read_file_tool(file_path: str) -> str:
-    """Read content from a file."""
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-        return f"File content ({file_path}):\n{content[:2000]}..."
-    except Exception as e:
-        return f"Error reading file: {str(e)}"
+def search_stack_overflow(query: str) -> str:
+    """
+    Intelligent Stack Overflow search tool.
 
+    Purpose:
+    - To find relevant Stack Overflow discussions about programming, firmware, or hardware issues.
+    - To summarize useful content clearly, not just dump raw snippets.
 
-@tool
-def list_directory(directory_path: str = ".") -> str:
-    """List all files and folders in a directory."""
-    try:
-        path = Path(directory_path)
-        items = list(path.iterdir())
-        
-        result = f"📁 Contents of {directory_path}:\n"
-        for item in items:
-            icon = "📁" if item.is_dir() else "📄"
-            size = f" ({item.stat().st_size} bytes)" if item.is_file() else ""
-            result += f"{icon} {item.name}{size}\n"
-        return result
-    except Exception as e:
-        return f"Error listing directory: {str(e)}"
+    Behavior Guidelines (acts as system prompt for the LLM):
+    - Use this tool ONLY for technical, programming, or debugging-related queries.
+    - Always include question titles and URLs in the response.
+    - Summarize the key solution or advice if available.
+    - If no good results are found, respond politely stating that no relevant data was found.
+    - Do NOT fabricate or guess answers — rely only on actual Stack Overflow results.
 
+    Args:
+        query (str): The user's question or problem description.
 
-@tool
-def move_file(source: str, destination: str) -> str:
-    """Move or rename a file."""
-    try:
-        shutil.move(source, destination)
-        return f"✅ Moved {source} to {destination}"
-    except Exception as e:
-        return f"Error moving file: {str(e)}"
+    Returns:
+        str: A formatted list of top Stack Overflow results with links and short summaries.
+    """
+    stackexchange = StackExchangeAPIWrapper(site="stackoverflow")
+    result = stackexchange.run(query)
+    
+    # Optional: Format output neatly for the LLM
+    if isinstance(result, (dict, list)):
+        formatted_result = json.dumps(result, indent=2)
+    else:
+        formatted_result = str(result)
 
-
-@tool
-def delete_file(file_path: str) -> str:
-    """Delete a file."""
-    try:
-        os.remove(file_path)
-        return f"✅ Deleted {file_path}"
-    except Exception as e:
-        return f"Error deleting file: {str(e)}"
-
-
-# ---------- WEB SCRAPING TOOLS ----------
-@tool
-def scrape_webpage(url: str) -> str:
-    """Extract text content from a webpage."""
-    try:
-        response = requests.get(url, timeout=10)
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
-        for script in soup(["script", "style"]):
-            script.decompose()
-        
-        text = soup.get_text()
-        lines = (line.strip() for line in text.splitlines())
-        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-        text = '\n'.join(chunk for chunk in chunks if chunk)
-        
-        return f"Content from {url}:\n{text[:2000]}..."
-    except Exception as e:
-        return f"Error scraping webpage: {str(e)}"
-
-
-@tool
-def extract_links(url: str) -> str:
-    """Extract all links from a webpage."""
-    try:
-        response = requests.get(url, timeout=10)
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
-        links = []
-        for link in soup.find_all('a', href=True):
-            text = link.text.strip() or "[No text]"
-            links.append(f"{text}: {link['href']}")
-        
-        return f"Links found on {url}:\n" + "\n".join(links[:30])
-    except Exception as e:
-        return f"Error extracting links: {str(e)}"
-
+    return formatted_result
 
 
 @tool
@@ -300,13 +248,7 @@ tools = [
     mathematical_calculator,
     weather_tool,
     image_reasoning_tool,
-    create_file,
-    read_file_tool,
-    list_directory,
-    move_file,
-    delete_file,
-    scrape_webpage,
-    extract_links,
+    search_stack_overflow,
     execute_sql_query,
     convert_units
 ]
