@@ -171,16 +171,9 @@ def search_stack_overflow(query: str) -> str:
     Returns:
         str: A formatted list of top Stack Overflow results with links and short summaries.
     """
-    stackexchange = StackExchangeAPIWrapper(site="stackoverflow")
-    result = stackexchange.run(query)
-    
-    # Optional: Format output neatly for the LLM
-    if isinstance(result, (dict, list)):
-        formatted_result = json.dumps(result, indent=2)
-    else:
-        formatted_result = str(result)
-
-    return formatted_result
+    search = DuckDuckGoSearchRun()
+    results = search.run(f"site:stackoverflow.com {query}")
+    return results
 
 
 @tool
