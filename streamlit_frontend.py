@@ -88,6 +88,11 @@ with st.sidebar.expander("View All Tools"):
     - 🌤️ Weather Info
     - 🖼️ Image Analysis
     
+    **Browser Automation:**
+    - 🌐 Navigate Webpages 👈 new
+    - 🖱️ Click Elements 👈 new
+    - 🔗 Extract Links 👈 new
+    - 📸 Screenshot Pages 👈 new
     
     **Web & Data:**
     - 🌐 Search StackOverflow
@@ -124,11 +129,8 @@ if user_input:
     image_context = ""
     if st.session_state['uploaded_image_path']:
         image_context = f"\n[Image uploaded at: {st.session_state['uploaded_image_path']}]"
-        # Modify user input to include image analysis request if they ask about the image
-        if any(word in user_input.lower() for word in ['image', 'picture', 'photo', 'analyze', 'what', 'see', 'describe']):
-            user_input_with_image = f"{user_input}\n\nPlease analyze the image at: {st.session_state['uploaded_image_path']}"
-        else:
-            user_input_with_image = user_input
+        # Always include image analysis instruction when an image is uploaded
+        user_input_with_image = f"{user_input}\n\n[SYSTEM: User has uploaded an image. Use the image_reasoning_tool to analyze the image at: {st.session_state['uploaded_image_path']} and incorporate the analysis into your response.]"
     else:
         user_input_with_image = user_input
 
@@ -162,6 +164,17 @@ if user_input:
                 ai_content += chunk_content
                 if chunk_content:  # Only write non-empty content
                     st.write(chunk_content)
+        
+        # Check if response contains a screenshot path and display it
+        if "uploaded_images" in ai_content and "screenshot_" in ai_content and ".png" in ai_content:
+            import re
+            screenshot_match = re.search(r'uploaded_images[/\\]screenshot_\d+\.png', ai_content)
+            if screenshot_match:
+                screenshot_path = screenshot_match.group(0)
+                try:
+                    st.image(screenshot_path, caption="Screenshot", use_container_width=True)
+                except Exception:
+                    pass
 
     # Append AI message to history
     st.session_state['msg_history'].append({'role': 'assistant', 'content': ai_content})

@@ -1,41 +1,52 @@
-from langgraph.graph import StateGraph, START
-from langchain_google_genai import ChatGoogleGenerativeAI
-from dotenv import load_dotenv
-from typing import TypedDict, Annotated
-from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.graph.message import add_messages
-from langchain_core.messages import BaseMessage, HumanMessage
-from langsmith import traceable
-from langgraph.prebuilt import ToolNode, tools_condition
-from langchain_core.tools import tool
-import re
 import math
-import requests
 import os
+import re
+from typing import Annotated, TypedDict
+import asyncio
+import json
+import sqlite3
+import threading
+import nest_asyncio
+import google.generativeai as genai
+from dotenv import load_dotenv
 from langchain_community.tools import DuckDuckGoSearchRun
+from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.tools import tool
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph import START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode, tools_condition
+from langsmith import traceable
+from langchain_community.utilities import (
+    GoogleSerperAPIWrapper,
+    OpenWeatherMapAPIWrapper,
+)
+from PIL import Image
+
+try:
+    from playwright.sync_api import sync_playwright
+    from playwright.async_api import async_playwright
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    PLAYWRIGHT_AVAILABLE = False
+
 try:
     from langchain_experimental.utilities import PythonREPL
 except ImportError:
     from langchain_community.utilities import PythonREPL
-from langchain_community.utilities import OpenWeatherMapAPIWrapper
-import google.generativeai as genai
-from PIL import Image
-import sqlite3
-import json
-from langchain_community.utilities import StackExchangeAPIWrapper
-from langchain_community.utilities import GoogleSerperAPIWrapper
-from langchain_community.agent_toolkits import PlayWrightBrowserToolkit
-from langchain_community.tools.playwright.utils import (
-    create_async_playwright_browser,  
-)
 
 
-
+nest_asyncio.apply()
 
 load_dotenv()
 
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
 
+try:
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+except AttributeError:
+    pass
 
 UPLOAD_DIR = "uploaded_images"
 if not os.path.exists(UPLOAD_DIR):
@@ -72,8 +83,8 @@ def python_code_executor(code: str) -> str:
             executor = PythonREPL()
             result = executor.run(code)
         except Exception:
-            import io
             import contextlib
+            import io
             
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
@@ -120,8 +131,10 @@ def weather_tool(city: str) -> str:
 @tool
 def image_reasoning_tool(image_path: str) -> str:
     """
-    Uses Gemini 2.5 Pro to analyze an image and detect broken or damaged objects.
-    Especially checks for issues in fans, lights, furniture, or electronics.
+    Analyze any image using Gemini 2.5 Pro vision capabilities.
+    Can analyze screenshots, photos, diagrams, code snippets, UI elements, 
+    LeetCode problems, documents, broken items, and more.
+    Provides detailed description of the content.
     """
     try:
         if not os.path.exists(image_path):
@@ -134,17 +147,199 @@ def image_reasoning_tool(image_path: str) -> str:
         image = Image.open(image_path)
 
         prompt = (
-            "You are a visual inspector. Analyze this image carefully and describe any broken, "
-            "damaged, or malfunctioning items you observe, focusing on electrical items "
-            "like fans, lights, or appliances. Be specific and objective."
+            "Analyze this image in detail. Describe what you see, including:\n"
+            "- Main content and purpose\n"
+            "- Any text, code, or problems visible\n"
+            "- UI elements, screenshots, or interfaces\n"
+            "- Technical details if it's code/programming related\n"
+            "- Any issues, errors, or problems to solve\n"
+            "Be thorough, specific, and helpful in your analysis."
         )
 
         response = model.generate_content([prompt, image])
 
-        return response.text.strip() if response.text else "No visible issues detected."
+        return response.text.strip() if response.text else "Unable to analyze the image."
     
     except Exception as e:
         return f"Error occurred: {str(e)}"
+    
+    
+
+
+
+
+def run_playwright_navigation(url: str, selector: str = "body") -> str:
+    """Worker function to isolate Playwright in its own thread."""
+    if not PLAYWRIGHT_AVAILABLE:
+        return "Error: Playwright is not installed. Browser automation is unavailable."
+    
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(url, timeout=30000)
+            page.wait_for_selector(selector, timeout=10000)
+            elements = page.query_selector_all(selector)
+            texts = [el.inner_text() for el in elements]
+            browser.close()
+            return "\n\n".join(texts[:10])
+    except Exception as e:
+        return f"Playwright error: {str(e)}"
+
+@tool
+def browser_navigation(url: str, selector: str = "body") -> str:
+    """
+    Navigate to a URL and extract text from a selector.
+    Note: This tool may not work in cloud deployment environments without proper browser setup.
+    """
+    if not PLAYWRIGHT_AVAILABLE:
+        return "❌ Browser automation not available. Playwright is not installed."
+    
+    result_holder = {}
+
+    def run():
+        result_holder["res"] = run_playwright_navigation(url, selector)
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    thread.join()
+    return result_holder.get("res", "No result.")
+
+
+
+@tool
+def click_element(selector: str, url: str) -> str:
+    """
+    Click an element on a web page using a CSS selector.
+    Note: This tool may not work in cloud deployment environments without proper browser setup.
+
+    Args:
+        selector (str): The CSS selector of the element to click.
+        url (str): The webpage URL to visit before clicking.
+
+    Returns:
+        str: Status message indicating the click result.
+    """
+    if not PLAYWRIGHT_AVAILABLE:
+        return "❌ Browser automation not available. Playwright is not installed."
+    
+    async def _click():
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                page = await browser.new_page()
+                await page.goto(url, timeout=30000)
+                await page.wait_for_selector(selector, timeout=10000)
+                await page.click(selector)
+                await asyncio.sleep(2)
+                current_url = page.url
+                await browser.close()
+                return f"✅ Clicked element '{selector}' successfully. Current URL: {current_url}"
+        except Exception as e:
+            return f"❌ Error while clicking element '{selector}': {str(e)}"
+
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(_click())
+        finally:
+            loop.close()
+    except Exception as e:
+        return f"❌ Failed to run click_element: {str(e)}"
+
+
+@tool
+def extract_links(url: str) -> str:
+    """
+    Extract all hyperlinks (anchor tags) from a webpage.
+    Note: This tool may not work in cloud deployment environments without proper browser setup.
+
+    Args:
+        url (str): The webpage URL to extract links from.
+
+    Returns:
+        str: A formatted list of URLs found on the page.
+    """
+    if not PLAYWRIGHT_AVAILABLE:
+        return "❌ Browser automation not available. Playwright is not installed."
+    
+    async def _extract():
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                page = await browser.new_page()
+                await page.goto(url, timeout=30000)
+                anchors = await page.query_selector_all("a")
+                links = []
+                for a in anchors:
+                    href = await a.get_attribute("href")
+                    text = (await a.inner_text()).strip()
+                    if href:
+                        links.append(f"{text or 'No Text'}: {href}")
+                await browser.close()
+                if not links:
+                    return f"No hyperlinks found on {url}"
+                return f"🔗 Extracted {len(links)} links from {url}:\n\n" + "\n".join(links[:20])
+        except Exception as e:
+            return f"❌ Error extracting links from {url}: {str(e)}"
+
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(_extract())
+        finally:
+            loop.close()
+    except Exception as e:
+        return f"❌ Failed to run extract_links: {str(e)}"
+
+
+@tool
+def screenshot_page(url: str) -> str:
+    """
+    Take a screenshot of a webpage and save it as an image file.
+    Returns the file path where the screenshot is saved so you can view it.
+    Note: This tool may not work in cloud deployment environments without proper browser setup.
+
+    Args:
+        url (str): The webpage URL to screenshot.
+
+    Returns:
+        str: Path to the saved screenshot image file.
+    """
+    if not PLAYWRIGHT_AVAILABLE:
+        return "❌ Browser automation not available. Playwright is not installed."
+    
+    async def _screenshot():
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                page = await browser.new_page()
+                await page.goto(url, timeout=30000)
+                
+                import time
+                timestamp = int(time.time())
+                screenshot_filename = f"screenshot_{timestamp}.png"
+                screenshot_path = os.path.join(UPLOAD_DIR, screenshot_filename)
+                
+                await page.screenshot(path=screenshot_path, full_page=True)
+                await browser.close()
+                
+                return f"📸 Screenshot captured successfully!\n\nSaved to: {screenshot_path}\n\nYou can view the screenshot at this location."
+        except Exception as e:
+            return f"❌ Error capturing screenshot: {str(e)}"
+
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(_screenshot())
+        finally:
+            loop.close()
+    except Exception as e:
+        return f"❌ Failed to run screenshot_page: {str(e)}"
+
 
 
 
@@ -243,7 +438,11 @@ tools = [
     image_reasoning_tool,
     search_stack_overflow,
     execute_sql_query,
-    convert_units
+    convert_units,
+    browser_navigation,
+    click_element,        
+    extract_links,        
+    screenshot_page       # 👈 new
 ]
 
 
