@@ -22,7 +22,12 @@ from langchain_community.utilities import (
     GoogleSerperAPIWrapper,
     OpenWeatherMapAPIWrapper,
 )
+from composio_langchain import ComposioToolSet, App
+
 from PIL import Image
+from composio_langchain import ComposioToolSet
+
+composio_toolset = ComposioToolSet(api_key="ak_2DVqmcP98xxnmcJ-NNvW")
 
 try:
     from playwright.sync_api import sync_playwright
@@ -470,22 +475,12 @@ def generate_chat_name_safe(thread_id, first_message):
 
 graph = StateGraph(chat_state)
 checkpointer = InMemorySaver()
-
-
 tool_node = ToolNode(tools)
-
-
 graph.add_node('chat_node', chat_node)
 graph.add_node('tools', tool_node)
-
-
 graph.add_edge(START, 'chat_node')
-
 graph.add_conditional_edges('chat_node', tools_condition)
-
 graph.add_edge('tools', 'chat_node')
-
-
 chatbot = graph.compile(checkpointer=checkpointer)
 
 
