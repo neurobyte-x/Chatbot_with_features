@@ -1,4 +1,4 @@
-# 🤖 LangGraph AI Agent - Multi-Tool Chatbot
+# 🤖 NeuroAgent - Multi-Tool Chatbot
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![LangChain](https://img.shields.io/badge/LangChain-🦜-green.svg)](https://github.com/langchain-ai/langchain)
